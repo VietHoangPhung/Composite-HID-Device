@@ -1,6 +1,6 @@
 ################################################################################
 # Automatically-generated file. Do not edit!
-# Toolchain: GNU Tools for STM32 (10.3-2021.10)
+# Toolchain: GNU Tools for STM32 (12.3.rel1)
 ################################################################################
 
 -include ../makefile.init
@@ -64,8 +64,8 @@ all: main-build
 main-build: gamepad_fw.elf secondary-outputs
 
 # Tool invocations
-gamepad_fw.elf gamepad_fw.map: $(OBJS) $(USER_OBJS) D:\STM32CubeIDE\STM32CubeIDE_1.12.1\Workspace\gamepad_fw\STM32F401CCUX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "gamepad_fw.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\STM32CubeIDE\STM32CubeIDE_1.12.1\Workspace\gamepad_fw\STM32F401CCUX_FLASH.ld" --specs=nosys.specs -Wl,-Map="gamepad_fw.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+gamepad_fw.elf gamepad_fw.map: $(OBJS) $(USER_OBJS) E:\STM32\GAMEPAD_STM32\gamepad_fw\STM32F401CCUX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "gamepad_fw.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"E:\STM32\GAMEPAD_STM32\gamepad_fw\STM32F401CCUX_FLASH.ld" --specs=nosys.specs -Wl,-Map="gamepad_fw.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

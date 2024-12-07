@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
+  * Copyright (c) 2023 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -22,15 +22,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ssd1306.h"
+#include "ssd1306_conf.h"
+#include "ssd1306_fonts.h"
+#include "ssd1306_tests.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
-/** mode **/
+/** **/
 typedef enum {
     MODE_GAMEPAD,
     MODE_MOUSE,
@@ -62,7 +65,6 @@ __attribute__((__packed__))
 	int8_t rightY;
 }gamepadReport_t;
 
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -70,47 +72,61 @@ __attribute__((__packed__))
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
 #define BTN_NUM 			16
 #define ADC_CHANNELS		4
+/* USER CODE BEGIN PM */
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
-/** Buttons with corresponding pins and port **/
-GPIO_TypeDef* port[16] = {GPIOA, 	  GPIOA,	  GPIOB, 	  GPIOB, 	  GPIOB, 	   GPIOB, 	    GPIOB, 	     GPIOA, 	  GPIOB, 	  GPIOB, 	   GPIOA, 	   GPIOB, 	    GPIOB, 	 	GPIOB, 	 	GPIOB, 	 	GPIOB};
-uint16_t pin[16] = 		 {GPIO_PIN_7, GPIO_PIN_6, GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_12, GPIO_PIN_10, GPIO_PIN_13, GPIO_PIN_15, GPIO_PIN_9, GPIO_PIN_15, GPIO_PIN_4, GPIO_PIN_14, GPIO_PIN_5, GPIO_PIN_7, GPIO_PIN_6, GPIO_PIN_8};
+I2C_HandleTypeDef hi2c3;
+
+TIM_HandleTypeDef htim2;
+
+GPIO_TypeDef* port[BTN_NUM] = {GPIOB, GPIOA, GPIOA, GPIOB, GPIOB, GPIOB, GPIOB, GPIOB, GPIOA, GPIOB, GPIOA, GPIOB, GPIOB, GPIOB, GPIOB, GPIOB};
+uint16_t pin[BTN_NUM] = {GPIO_PIN_0, GPIO_PIN_7, GPIO_PIN_6, GPIO_PIN_1, GPIO_PIN_12, GPIO_PIN_10, GPIO_PIN_13, GPIO_PIN_2, GPIO_PIN_9, GPIO_PIN_15, GPIO_PIN_4, GPIO_PIN_14, GPIO_PIN_5, GPIO_PIN_7, GPIO_PIN_8, GPIO_PIN_6};
+uint8_t keycode[BTN_NUM] = {0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13};
 
 /* USER CODE BEGIN PV */
+mouseReport_t mouseReport = {0x02, 0, 0, 0, 0, 0, 0};
+gamepadReport_t gamepadReport = {0x01, 0, 0, 0, 0, 0};
+
+char lcdBuffer[3][32];
+
 uint16_t adcValues[ADC_CHANNELS];
 Mode modeState = MODE_GAMEPAD;
 
-mouseReport_t mouseReport = {0x02, 0, 0, 0, 0, 0, 0};
-gamepadReport_t gamepadReport = {0x01, 0, 0, 0, 0, 0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
-
-uint8_t switchMode(void);
-//int getValue(int channel);
-void configureADCChannel(uint32_t channel);
-void getAllADCValue(void);
-void gamepadProcess(void);
-void mouseProcess(void);
+static void MX_I2C3_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 extern USBD_HandleTypeDef hUsbDeviceFS;
-extern void USBD_CUSTOM_HID_SendReport();
-
-//void USBD_CUSTOM_HID_SendReport();
+void USBD_CUSTOM_HID_SendReport();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void mouseProcess(void);
+void gamepadProcess(void);
+
+uint32_t getADCValue(uint32_t channel);
+void getAllADCValue(void);
+
+uint8_t switchMode(void);
+
+
+/* Array of mode handlers */
 void (*modeHandlers[])(void) = {gamepadProcess, mouseProcess};
+
+/* Display update */
+void updateDisplay(void);
 
 /* USER CODE END 0 */
 
@@ -135,7 +151,6 @@ int main(void)
 
   /* Configure the system clock */
   SystemClock_Config();
-
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -143,77 +158,81 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_I2C3_Init();
+  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
+  ssd1306_Init();
+
+  ssd1306_Fill(Black);
+  ssd1306_SetCursor(1, 15);
+  ssd1306_WriteString("Test 2", Font_6x8, White);
+  ssd1306_UpdateScreen();
+  HAL_Delay(3000);
   /* USER CODE BEGIN 2 */
-  mouseReport.reportId = 2;
-  gamepadReport.reportId = 1;
+  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_1 | TIM_CHANNEL_2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* USER CODE END WHILE */
 	  getAllADCValue();
 	  if(switchMode())
 	  {
-		  for(int i = 0; i < 5; i++)
-		  {
-			  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-			  HAL_Delay(1000);
-		  }
+		  while(switchMode());
 		  modeState++;
-		  if(modeState >= MODE_COUNT)
+		  if(modeState > MODE_COUNT)
 			  modeState = MODE_GAMEPAD;
 	  }
-	  modeHandlers[modeState]();
-  }
 
+	  modeHandlers[modeState]();
+	  updateDisplay();
+    /* USER CODE BEGIN 3 */
+  }
   /* USER CODE END 3 */
 }
 
-/** my functions declaration **/
+/**** Functions definition****/
 
+/*
+ * @brief	Switch mode condition
+ * @retval	none
+ * @note	Hold PB0, PA6, PB1 at the same time and then release
+ */
 uint8_t switchMode(void)
 {
-	return (!(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) || HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5)));
+	return (!(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) && HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_5)));
 }
 
-void configureADCChannel(uint32_t channel)
+/*
+ * @brief	Update Display
+ * @retval	None
+ */
+void updateDisplay(void)
 {
-    ADC_ChannelConfTypeDef sConfig = {0};
-    sConfig.Channel = channel;
-    sConfig.Rank = 1;  // Rank is irrelevant in single-channel mode
-    sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
-    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-    {
-        Error_Handler();
-    }
+    const char *modeNames[] = { "Gamepad Mode", "Mouse Mode"};
+    sprintf(lcdBuffer[0], "%s", modeNames[modeState]);
+    sprintf(lcdBuffer[1], "ADC: %d %d", adcValues[0], adcValues[1]);
+    sprintf(lcdBuffer[2], "ADC: %d %d", adcValues[2], adcValues[3]);
+
+    ssd1306_Fill(Black);
+    ssd1306_SetCursor(1, 10);
+    ssd1306_WriteString(lcdBuffer[0], Font_6x8, White);
+    ssd1306_SetCursor(1, 30);
+    ssd1306_WriteString(lcdBuffer[1], Font_6x8, White);
+    ssd1306_SetCursor(1, 50);
+    ssd1306_WriteString(lcdBuffer[2], Font_6x8, White);
+    ssd1306_UpdateScreen();
 }
 
-void getAllADCValue(void)
-{
-    for (int i = 0; i < ADC_CHANNELS; i++)
-    {
-        // Configure each channel
-        configureADCChannel(ADC_CHANNEL_0 + i);
-
-        // Start ADC conversion
-        HAL_ADC_Start(&hadc1);
-
-        // Poll for conversion and store value
-        if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
-        {
-            adcValues[i] = HAL_ADC_GetValue(&hadc1);
-        }
-    }
-
-    // Stop ADC once after reading all channels
-    HAL_ADC_Stop(&hadc1);
-}
-
-//int getValue(int channel)
+/*
+ * @brief	Get ADC value from a channel of ADC1
+ * @retval 	uint32
+ */
+//uint32_t getADCValue(uint32_t channel)
 //{
-//	int value = 0;
+//	uint32_t value = 0;
 //	ADC_ChannelConfTypeDef sConfig = {0};
 //	sConfig.Channel = channel;
 //	sConfig.Rank = 1;
@@ -230,53 +249,59 @@ void getAllADCValue(void)
 //	return value;
 //}
 
-//void getAllADCValue(void)
-//{
-//	  adcValues[0] = getValue(ADC_CHANNEL_0);
-//	  adcValues[1] = getValue(ADC_CHANNEL_1);
-//	  adcValues[2] = getValue(ADC_CHANNEL_2);
-//	  adcValues[3] = getValue(ADC_CHANNEL_3);
-//}
 
-//void getAllADCValue(void)
-//{
-//    if (HAL_ADC_Start(&hadc1) != HAL_OK)
-//    {
-//        Error_Handler();
-//        adcValues[0] = adcValues[1] = adcValues[2] = adcValues[3] = 2047;
-//    }
-//
-//    for (int i = 0; i < 4; i++)
-//    {
-//        if (HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY) == HAL_OK)
-//        {
-//            adcValues[i] = HAL_ADC_GetValue(&hadc1);
-//        }
-//        else
-//        {
-//            adcValues[i] = 2047;
-//        }
-//    }
-//
-//    // Stop the ADC
-//    if (HAL_ADC_Stop(&hadc1) != HAL_OK)
-//    {
-//        Error_Handler();
-//    }
-//}
+/*
+ * @brief	Get values from ADC1 channel 0-4 and assign into array adcValues
+ * @retval	None
+ * @note	Continuous Conversion Mode is enabled
+ */
+void getAllADCValue(void)
+{
+    HAL_ADC_Start(&hadc1);
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        if (HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY) == HAL_OK)
+        {
+            adcValues[i] = HAL_ADC_GetValue(&hadc1);
+        }
+    }
 
+    HAL_ADC_Stop(&hadc1);
+}
+
+/*
+ * @brief	Gamepad Process
+ * @retval	None
+ */
+void mouseProcess(void)
+{
+	// Get axes values
+    mouseReport.pointerX = (adcValues[3] - 2047) * 255 / 4095;		// -127 - 127
+    mouseReport.pointerY = (2047 - adcValues[2]) * 255 / 4095;
+
+    // Get buttons state
+    mouseReport.leftClick = (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_RESET);
+    mouseReport.rightClick = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == GPIO_PIN_RESET);
+    mouseReport.midClick = (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_RESET);
+
+    // Get wheel values
+    mouseReport.wheel = __HAL_TIM_GET_COUNTER(&htim2) - 127;
+
+    // Send report to the host
+    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, &mouseReport, sizeof(mouseReport));
+}
+
+/*
+ * @brief	Mouse Process
+ * @retval	None
+ */
 void gamepadProcess(void)
 {
 	// Get axes values
-//    gamepadReport.leftX = (2047 - adcValues[0]) * 255 / 4095;		// -127 - 127
-//    gamepadReport.leftY = (2047 - adcValues[1]) * 255 / 4095;
-//    gamepadReport.rightX = (2047 - adcValues[2]) * 255 / 4095;
-//    gamepadReport.rightY = (2047 - adcValues[3]) * 255 / 4095;
-
-	    gamepadReport.leftX = (127 - adcValues[0]);		// -127 - 127
-	    gamepadReport.leftY = (127 - adcValues[1]);
-	    gamepadReport.rightX = (127 - adcValues[2]);
-	    gamepadReport.rightY = (127 - adcValues[3]);
+    gamepadReport.leftX = (adcValues[3] - 2047) * 255 / 4095;		// -127 - 127
+    gamepadReport.leftY = (2047 - adcValues[2]) * 255 / 4095;
+    gamepadReport.rightX = (adcValues[1] - 2047) * 255 / 4095;
+    gamepadReport.rightY = (2047 - adcValues[0]) * 255 / 4095;
 
     // Reset buttons
     gamepadReport.buttons = 0;
@@ -293,27 +318,6 @@ void gamepadProcess(void)
     // Send report to the host
     USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, &gamepadReport, sizeof(gamepadReport));
 }
-
-void mouseProcess(void)
-{
-	// Get axes values
-//    mouseReport.pointerX = (2047 - adcValues[0]) * 150 / 4095;		// -127 - 127
-//    mouseReport.pointerY = (2047 - adcValues[1]) * 150 / 4095;
-	mouseReport.pointerX = (127 - adcValues[0]) * 32 / 255;	// -127 - 127
-	mouseReport.pointerY = (127 - adcValues[1]) * 32 / 255;
-
-    // Get buttons state
-    mouseReport.leftClick = (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10) == GPIO_PIN_RESET);
-    mouseReport.rightClick = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_15) == GPIO_PIN_RESET);
-    mouseReport.midClick = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == GPIO_PIN_RESET);
-
-    // Get wheel values
-    //mouseReport.wheel = __HAL_TIM_GET_COUNTER(&htim2) - 127;
-
-    // Send report to the host
-    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, &mouseReport, sizeof(mouseReport));
-}
-
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -381,8 +385,8 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
-  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
-  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = ENABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -391,8 +395,6 @@ static void MX_ADC1_Init(void)
   hadc1.Init.NbrOfConversion = 4;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  //hadc1.Init.EOCSelection = EOC_SEQ_CONV;
-  //hadc1.Init.EOCSelection = DISABLE;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
@@ -441,6 +443,90 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief I2C3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C3_Init(void)
+{
+
+  /* USER CODE BEGIN I2C3_Init 0 */
+
+  /* USER CODE END I2C3_Init 0 */
+
+  /* USER CODE BEGIN I2C3_Init 1 */
+
+  /* USER CODE END I2C3_Init 1 */
+  hi2c3.Instance = I2C3;
+  hi2c3.Init.ClockSpeed = 400000;
+  hi2c3.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c3.Init.OwnAddress1 = 0;
+  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c3.Init.OwnAddress2 = 0;
+
+  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C3_Init 2 */
+
+  /* USER CODE END I2C3_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 256;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -452,39 +538,22 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PC15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PA6 PA7 PA9 PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_15|GPIO_PIN_4;
+  /*Configure GPIO pins : PA4 PA6 PA7 PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB0 PB1 PB10 PB12
-                           PB13 PB14 PB5 PB6
-                           PB7 PB8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_10|GPIO_PIN_12
-                          |GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_5|GPIO_PIN_6
-                          |GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_15|GPIO_PIN_9;
+  /*Configure GPIO pins : PB0 PB1 PB2 PB10
+                           PB12 PB13 PB14 PB15
+                           PB5 PB6 PB7 PB8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_10
+                          |GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15
+                          |GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);

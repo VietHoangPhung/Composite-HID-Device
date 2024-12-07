@@ -1,4 +1,8 @@
-main.c:129:5:getValueButShorter	2
-main.c:247:6:SystemClock_Config	3
-main.c:153:5:main	9
-main.c:494:6:Error_Handler	1
+../Core/Src/main.c:276:6:mouseProcess	1
+../Core/Src/main.c:298:6:gamepadProcess	3
+../Core/Src/main.c:203:9:switchMode	3
+../Core/Src/main.c:212:6:updateDisplay	1
+../Core/Src/main.c:258:6:getAllADCValue	3
+../Core/Src/main.c:325:6:SystemClock_Config	3
+../Core/Src/main.c:137:5:main	12
+../Core/Src/main.c:573:6:Error_Handler	1
